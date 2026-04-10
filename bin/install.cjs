@@ -91,18 +91,35 @@ function detectAgents() {
       id: 'claude',
       label: 'Claude Code',
       configPath: path.join(home, '.claude', 'settings.json'),
+      configFormat: 'json',
       skillDir: path.join(home, '.claude', 'skills', 'agent-inbox'),
+    },
+    {
+      id: 'codex',
+      label: 'Codex CLI',
+      configPath: path.join(home, '.codex', 'config.toml'),
+      configFormat: 'toml',
+      skillDir: path.join(home, '.codex', 'skills', 'agent-inbox'),
     },
     {
       id: 'cursor',
       label: 'Cursor',
       configPath: path.join(home, '.cursor', 'mcp.json'),
+      configFormat: 'json',
       skillDir: path.join(home, '.cursor', 'skills', 'agent-inbox'),
+    },
+    {
+      id: 'gemini',
+      label: 'Gemini CLI',
+      configPath: path.join(home, '.gemini', 'settings.json'),
+      configFormat: 'json',
+      skillDir: path.join(home, '.gemini', 'skills', 'agent-inbox'),
     },
     {
       id: 'windsurf',
       label: 'Windsurf',
       configPath: path.join(home, '.codeium', 'windsurf', 'mcp_config.json'),
+      configFormat: 'json',
       skillDir: path.join(home, '.codeium', 'windsurf', 'skills', 'agent-inbox'),
     },
   ];
@@ -119,7 +136,15 @@ function detectAgents() {
 
 // --- MCP config injection ---
 
-function injectMcpConfig(configPath, displayName) {
+function injectMcpConfig(agent) {
+  if (agent.configFormat === 'toml') {
+    injectTomlMcpConfig(agent.configPath, agent.label);
+  } else {
+    injectJsonMcpConfig(agent.configPath, agent.label);
+  }
+}
+
+function injectJsonMcpConfig(configPath, displayName) {
   const entry = { command: 'npx', args: ['-y', PACKAGE] };
 
   if (fs.existsSync(configPath)) {
@@ -146,6 +171,27 @@ function injectMcpConfig(configPath, displayName) {
       configPath,
       JSON.stringify({ mcpServers: { 'agent-inbox': entry } }, null, 2) + '\n'
     );
+    ok(`${displayName} configured (created)`);
+  }
+}
+
+function injectTomlMcpConfig(configPath, displayName) {
+  const tomlBlock = `\n[mcp_servers.agent-inbox]\ncommand = "npx"\nargs = ["-y", "${PACKAGE}"]\nenv = { }\n`;
+
+  if (fs.existsSync(configPath)) {
+    const raw = fs.readFileSync(configPath, 'utf8');
+
+    if (raw.includes('[mcp_servers.agent-inbox]')) {
+      ok(`${displayName} already configured`);
+      return;
+    }
+
+    fs.writeFileSync(configPath, raw.trimEnd() + '\n' + tomlBlock);
+    ok(`${displayName} configured`);
+  } else {
+    const dir = path.dirname(configPath);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(configPath, tomlBlock.trimStart());
     ok(`${displayName} configured (created)`);
   }
 }
@@ -205,7 +251,7 @@ function installMcp(agents, callback) {
   console.log('');
 
   if (agents.length === 0) {
-    warn('No AI coding agents detected (Claude Code, Cursor, Windsurf)');
+    warn('No AI coding agents detected');
     info(`Add the MCP config manually — see: https://github.com/${REPO}#manual-setup`);
     callback();
     return;
@@ -238,7 +284,7 @@ function installMcp(agents, callback) {
 
     console.log('');
     for (const agent of selected) {
-      injectMcpConfig(agent.configPath, agent.label);
+      injectMcpConfig(agent);
     }
     callback();
   });
