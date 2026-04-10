@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+// If stdin is a TTY, user ran this from a terminal → launch interactive installer.
+// If stdin is NOT a TTY, an MCP client piped us → start the MCP server.
+if (process.stdin.isTTY) {
+  await import("./installer.js");
+  process.exit(0);
+}
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";

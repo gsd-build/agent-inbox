@@ -5,10 +5,12 @@ Give any AI agent a disposable email inbox in one tool call.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gsd-build/agent-inbox/main/install.sh | bash
+npx gsd-agent-inbox
 ```
 
-The installer auto-detects your AI coding agents (Claude Code, Cursor, Windsurf) and configures the MCP server + optional skill for each.
+The interactive installer auto-detects your AI coding agents (Claude Code, Cursor, Windsurf), configures the MCP server, and installs the optional skill for each.
+
+When launched by an MCP client (non-TTY), it starts the MCP server normally. When you run it from a terminal, you get the installer.
 
 ## What it does
 
