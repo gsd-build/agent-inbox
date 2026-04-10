@@ -1,74 +1,55 @@
 /**
- * mail.tm API client — creates temporary inboxes and reads messages.
- * API docs: https://docs.mail.tm/
+ * Email provider abstraction with mail.tm as primary and 1secmail as fallback.
  */
 
-const BASE_URL = "https://api.mail.tm";
-
-interface Domain {
-  id: string;
-  domain: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Account {
-  id: string;
-  address: string;
-  quota: number;
-  used: number;
-  isDisabled: boolean;
-  isDeleted: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface MessageSummary {
-  id: string;
-  accountId: string;
-  msgid: string;
-  from: { address: string; name: string };
-  to: { address: string; name: string }[];
-  subject: string;
-  intro: string;
-  seen: boolean;
-  isDeleted: boolean;
-  hasAttachments: boolean;
-  size: number;
-  downloadUrl: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface MessageFull extends MessageSummary {
-  cc: { address: string; name: string }[];
-  bcc: { address: string; name: string }[];
-  flagged: boolean;
-  verifications: string[];
-  retention: boolean;
-  retentionDate: string;
-  text: string;
-  html: string[];
-}
+// --- Shared types ---
 
 export interface Inbox {
   address: string;
   password: string;
   token: string;
   accountId: string;
+  provider: "mail.tm" | "1secmail";
+  name?: string;
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+export interface MessageFull {
+  id: string;
+  from: { address: string; name: string };
+  subject: string;
+  intro: string;
+  createdAt: string;
+  text: string;
+  html: string[];
+}
+
+// --- mail.tm provider ---
+
+const MAILTM_URL = "https://api.mail.tm";
+
+interface MailTmDomain {
+  id: string;
+  domain: string;
+  isActive: boolean;
+}
+
+interface MailTmMessageSummary {
+  id: string;
+  from: { address: string; name: string };
+  subject: string;
+  intro: string;
+  createdAt: string;
+}
+
+interface MailTmMessageFull extends MailTmMessageSummary {
+  text: string;
+  html: string[];
+}
+
+async function mailtmRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${MAILTM_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (!res.ok) {
     const body = await res.text();
@@ -77,9 +58,197 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
-function authHeaders(token: string): Record<string, string> {
+function mailtmAuth(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
+
+async function mailtmCreateInbox(prefix?: string): Promise<Inbox> {
+  const domains = await mailtmRequest<{ "hydra:member": MailTmDomain[] }>("/domains");
+  const active = domains["hydra:member"].find((d) => d.isActive);
+  if (!active) throw new Error("No active mail.tm domains");
+
+  const localPart = prefix
+    ? `${prefix}-${Date.now()}`
+    : `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const address = `${localPart}@${active.domain}`;
+  const password = generatePassword();
+
+  await mailtmRequest("/accounts", {
+    method: "POST",
+    body: JSON.stringify({ address, password }),
+  });
+
+  const tokenRes = await mailtmRequest<{ token: string; id: string }>("/token", {
+    method: "POST",
+    body: JSON.stringify({ address, password }),
+  });
+
+  return { address, password, token: tokenRes.token, accountId: tokenRes.id, provider: "mail.tm" };
+}
+
+async function mailtmListMessages(token: string): Promise<MailTmMessageSummary[]> {
+  const res = await mailtmRequest<{ "hydra:member": MailTmMessageSummary[] }>("/messages", {
+    headers: mailtmAuth(token),
+  });
+  return res["hydra:member"];
+}
+
+async function mailtmGetMessage(token: string, messageId: string): Promise<MessageFull> {
+  const msg = await mailtmRequest<MailTmMessageFull>(`/messages/${messageId}`, {
+    headers: mailtmAuth(token),
+  });
+  return { id: msg.id, from: msg.from, subject: msg.subject, intro: msg.intro, createdAt: msg.createdAt, text: msg.text, html: msg.html };
+}
+
+async function mailtmDelete(token: string, accountId: string): Promise<void> {
+  await fetch(`${MAILTM_URL}/accounts/${accountId}`, {
+    method: "DELETE",
+    headers: mailtmAuth(token),
+  });
+}
+
+// --- 1secmail fallback provider ---
+
+const SECMAIL_URL = "https://www.1secmail.com/api/v1";
+
+interface SecMailMessage {
+  id: number;
+  from: string;
+  subject: string;
+  date: string;
+}
+
+interface SecMailMessageFull extends SecMailMessage {
+  body: string;
+  textBody: string;
+  htmlBody: string;
+}
+
+async function secmailCreateInbox(prefix?: string): Promise<Inbox> {
+  const localPart = prefix
+    ? `${prefix}-${Date.now()}`
+    : `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // 1secmail uses predefined domains — pick one
+  const domains = ["1secmail.com", "1secmail.org", "1secmail.net"];
+  const domain = domains[Math.floor(Math.random() * domains.length)]!;
+  const address = `${localPart}@${domain}`;
+
+  // 1secmail doesn't require account creation — just start polling
+  return { address, password: "", token: "", accountId: "", provider: "1secmail" };
+}
+
+async function secmailListMessages(address: string): Promise<SecMailMessage[]> {
+  const [login, domain] = address.split("@") as [string, string];
+  const res = await fetch(`${SECMAIL_URL}/?action=getMessages&login=${login}&domain=${domain}`);
+  if (!res.ok) throw new Error(`1secmail ${res.status}`);
+  return res.json() as Promise<SecMailMessage[]>;
+}
+
+async function secmailGetMessage(address: string, id: number): Promise<MessageFull> {
+  const [login, domain] = address.split("@") as [string, string];
+  const res = await fetch(`${SECMAIL_URL}/?action=readMessage&login=${login}&domain=${domain}&id=${id}`);
+  if (!res.ok) throw new Error(`1secmail ${res.status}`);
+  const msg = (await res.json()) as SecMailMessageFull;
+  return {
+    id: String(msg.id),
+    from: { address: msg.from, name: msg.from },
+    subject: msg.subject,
+    intro: msg.textBody?.slice(0, 200) || "",
+    createdAt: msg.date,
+    text: msg.textBody || msg.body || "",
+    html: msg.htmlBody ? [msg.htmlBody] : [],
+  };
+}
+
+// --- Unified API ---
+
+export async function createInbox(prefix?: string): Promise<Inbox> {
+  // Try mail.tm first, fall back to 1secmail
+  try {
+    return await mailtmCreateInbox(prefix);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`mail.tm failed (${msg}), falling back to 1secmail`);
+    return await secmailCreateInbox(prefix);
+  }
+}
+
+export async function listMessages(inbox: Inbox): Promise<MessageFull[]> {
+  if (inbox.provider === "1secmail") {
+    const summaries = await secmailListMessages(inbox.address);
+    const full: MessageFull[] = [];
+    for (const s of summaries) {
+      full.push(await secmailGetMessage(inbox.address, s.id));
+    }
+    return full;
+  }
+
+  // mail.tm
+  const summaries = await mailtmListMessages(inbox.token);
+  const full: MessageFull[] = [];
+  for (const s of summaries) {
+    full.push(await mailtmGetMessage(inbox.token, s.id));
+  }
+  return full;
+}
+
+export async function deleteAccount(inbox: Inbox): Promise<void> {
+  if (inbox.provider === "mail.tm") {
+    await mailtmDelete(inbox.token, inbox.accountId);
+  }
+  // 1secmail has no delete API — inboxes expire automatically
+}
+
+// --- Link extraction ---
+
+const urlRegex = /https?:\/\/[^\s"'<>\])}]+/g;
+
+const confirmKeywords = [
+  "confirm", "verify", "activate", "validate",
+  "token", "magic", "auth", "callback",
+  "signup", "sign-up", "register",
+  "click", "link", "action",
+  "redirect", "return",
+];
+
+function cleanUrl(url: string): string {
+  return url.replace(/[.,;:!?)}\]]+$/, "");
+}
+
+function isConfirmationLink(url: string): boolean {
+  const lower = url.toLowerCase();
+  return confirmKeywords.some((kw) => lower.includes(kw));
+}
+
+export function extractConfirmationLinks(message: MessageFull): string[] {
+  const links = new Set<string>();
+
+  for (const html of message.html) {
+    for (const url of html.match(urlRegex) || []) {
+      if (isConfirmationLink(url)) links.add(cleanUrl(url));
+    }
+  }
+  if (message.text) {
+    for (const url of message.text.match(urlRegex) || []) {
+      if (isConfirmationLink(url)) links.add(cleanUrl(url));
+    }
+  }
+  return [...links];
+}
+
+export function extractAllLinks(message: MessageFull): string[] {
+  const links = new Set<string>();
+  for (const html of message.html) {
+    for (const match of html.match(urlRegex) || []) links.add(cleanUrl(match));
+  }
+  if (message.text) {
+    for (const match of message.text.match(urlRegex) || []) links.add(cleanUrl(match));
+  }
+  return [...links];
+}
+
+// --- Util ---
 
 function generatePassword(): string {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -88,134 +257,4 @@ function generatePassword(): string {
     pw += chars[Math.floor(Math.random() * chars.length)];
   }
   return pw;
-}
-
-export async function getAvailableDomains(): Promise<Domain[]> {
-  const result = await request<{ "hydra:member": Domain[] }>("/domains");
-  return result["hydra:member"];
-}
-
-export async function createInbox(prefix?: string): Promise<Inbox> {
-  const domains = await getAvailableDomains();
-  const activeDomain = domains.find((d) => d.isActive);
-  if (!activeDomain) {
-    throw new Error("No active domains available on mail.tm");
-  }
-
-  const localPart = prefix
-    ? `${prefix}-${Date.now()}`
-    : `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const address = `${localPart}@${activeDomain.domain}`;
-  const password = generatePassword();
-
-  await request<Account>("/accounts", {
-    method: "POST",
-    body: JSON.stringify({ address, password }),
-  });
-
-  const tokenResponse = await request<{ token: string; id: string }>(
-    "/token",
-    {
-      method: "POST",
-      body: JSON.stringify({ address, password }),
-    }
-  );
-
-  return {
-    address,
-    password,
-    token: tokenResponse.token,
-    accountId: tokenResponse.id,
-  };
-}
-
-export async function listMessages(
-  token: string
-): Promise<MessageSummary[]> {
-  const result = await request<{ "hydra:member": MessageSummary[] }>(
-    "/messages",
-    { headers: authHeaders(token) }
-  );
-  return result["hydra:member"];
-}
-
-export async function getMessage(
-  token: string,
-  messageId: string
-): Promise<MessageFull> {
-  return request<MessageFull>(`/messages/${messageId}`, {
-    headers: authHeaders(token),
-  });
-}
-
-export async function deleteAccount(token: string, accountId: string): Promise<void> {
-  await fetch(`${BASE_URL}/accounts/${accountId}`, {
-    method: "DELETE",
-    headers: authHeaders(token),
-  });
-}
-
-/** Extract URLs that look like confirmation/verification links from email HTML/text */
-export function extractConfirmationLinks(message: MessageFull): string[] {
-  const links: Set<string> = new Set();
-  const urlRegex = /https?:\/\/[^\s"'<>\])}]+/g;
-
-  // Search HTML bodies
-  for (const html of message.html) {
-    const matches = html.match(urlRegex) || [];
-    for (const url of matches) {
-      if (isConfirmationLink(url)) {
-        links.add(cleanUrl(url));
-      }
-    }
-  }
-
-  // Search plain text
-  if (message.text) {
-    const matches = message.text.match(urlRegex) || [];
-    for (const url of matches) {
-      if (isConfirmationLink(url)) {
-        links.add(cleanUrl(url));
-      }
-    }
-  }
-
-  return [...links];
-}
-
-function isConfirmationLink(url: string): boolean {
-  const lower = url.toLowerCase();
-  const keywords = [
-    "confirm", "verify", "activate", "validate",
-    "token", "magic", "auth", "callback",
-    "signup", "sign-up", "register",
-    "click", "link", "action",
-    "redirect", "return",
-  ];
-  // Include any link that has auth-related keywords, or just return all links
-  // if none match the keywords (the user can decide)
-  return keywords.some((kw) => lower.includes(kw));
-}
-
-function cleanUrl(url: string): string {
-  // Strip trailing punctuation that might have been captured
-  return url.replace(/[.,;:!?)}\]]+$/, "");
-}
-
-/** Get ALL links from a message, not just confirmation ones */
-export function extractAllLinks(message: MessageFull): string[] {
-  const links: Set<string> = new Set();
-  const urlRegex = /https?:\/\/[^\s"'<>\])}]+/g;
-
-  for (const html of message.html) {
-    for (const match of html.match(urlRegex) || []) {
-      links.add(cleanUrl(match));
-    }
-  }
-  if (message.text) {
-    for (const match of message.text.match(urlRegex) || []) {
-      links.add(cleanUrl(match));
-    }
-  }
-  return [...links];
 }

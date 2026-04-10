@@ -25,20 +25,17 @@ AI agents hit a wall when a service requires email verification. They can fill o
 ## The fix
 
 ```
-Agent: create_inbox({ prefix: "signup" })
-→ signup-1712345678@somedomain.com
+Agent: create_inbox({ prefix: "signup", name: "test" })
+→ signup-1712345678@somedomain.com (name: test)
 
 Agent: [fills sign-up form with that email]
 
-Agent: check_inbox({ address: "signup-1712345678@somedomain.com", wait_seconds: 15 })
-→ Found 1 message
-  Subject: Confirm your email
-  Confirmation Links:
-    → https://myapp.supabase.co/auth/v1/verify?token=abc123&type=signup
+Agent: verify_email({ address: "test", subject_contains: "confirm" })
+→ Email verified successfully!
+  Verification URL: https://myapp.supabase.co/auth/v1/verify?token=abc123
+  HTTP Status: 200
 
-Agent: [clicks the confirmation link]
-
-Agent: delete_inbox({ address: "signup-1712345678@somedomain.com" })
+Agent: delete_inbox({ address: "test" })
 → Done.
 ```
 
@@ -120,10 +117,22 @@ npm start
 
 | Tool | What it does |
 |------|-------------|
-| `create_inbox` | Spin up a temporary email address. Pass an optional `prefix` for readability. |
-| `check_inbox` | Poll for messages. Returns subjects, bodies, and auto-extracted verification links. `wait_seconds` lets the email arrive before checking. |
-| `list_inboxes` | Show all active inboxes in the current session. |
+| `create_inbox` | Spin up a temporary email address. Optional `prefix` for readability, optional `name` for easy reference. |
+| `check_inbox` | Check for messages. Returns subjects, bodies, and auto-extracted verification links. |
+| `wait_for_email` | Poll until a matching email arrives. Filters by sender and subject. Auto-retries with backoff. |
+| `verify_email` | One-shot verification: polls for confirmation email, extracts the link, visits it via HTTP. Three steps in one tool call. |
+| `list_inboxes` | Show all active inboxes with names and providers. |
 | `delete_inbox` | Destroy an inbox and its backing account. |
+
+### Named inboxes
+
+Give inboxes a name for easy reference across multiple tool calls:
+
+```
+create_inbox({ prefix: "signup", name: "main" })
+wait_for_email({ address: "main", subject_contains: "confirm" })
+delete_inbox({ address: "main" })
+```
 
 ## Skill
 
@@ -139,17 +148,16 @@ curl -fsSL https://raw.githubusercontent.com/gsd-build/agent-inbox/main/skill/SK
 
 ## How it works
 
-Uses the [mail.tm](https://mail.tm) API to create real, internet-facing email addresses. No API key or account required — mail.tm provides free disposable mailboxes.
+Uses [mail.tm](https://mail.tm) as the primary provider with automatic fallback to [1secmail](https://www.1secmail.com) if mail.tm is down. No API keys or accounts required.
 
-- Inboxes are ephemeral — they live only as long as the MCP server process
-- Each address gets a unique timestamp suffix to avoid collisions
-- `check_inbox` auto-extracts confirmation/verification URLs via keyword matching
-- Cleanup deletes the mailbox on the mail.tm side
+- **Fallback providers** — if mail.tm fails, 1secmail kicks in automatically
+- **Cleanup on exit** — inboxes are deleted when the MCP server shuts down (SIGINT/SIGTERM)
+- **Smart polling** — `wait_for_email` retries with backoff (3s → 5s → 10s → 15s)
+- **Link extraction** — confirmation/verification URLs auto-detected via keyword matching
 
 ## Limitations
 
-- Some services block disposable email domains. If sign-up is rejected, the service likely has mail.tm on a blocklist.
-- mail.tm rate limits to ~8 req/s. Don't poll in a tight loop.
+- Some services block disposable email domains. If sign-up is rejected, try a different service or provider.
 - Inboxes don't survive server restarts (in-memory only).
 - Text and HTML bodies only — no attachment support.
 
