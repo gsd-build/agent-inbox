@@ -1,0 +1,54 @@
+{
+  "name": "gsd-agent-inbox",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Give any AI agent a disposable email inbox in one tool call. MCP server for email verification, auth flows, and testing.",
+  "main": "build/index.js",
+  "bin": {
+    "gsd-agent-inbox": "build/index.js"
+  },
+  "files": [
+    "build",
+    "skill"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "email",
+    "temporary-email",
+    "ai-agent",
+    "claude",
+    "cursor",
+    "windsurf",
+    "testing",
+    "auth-flow",
+    "verification",
+    "disposable-email"
+  ],
+  "author": "gsd-build",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gsd-build/agent-inbox.git"
+  },
+  "homepage": "https://github.com/gsd-build/agent-inbox#readme",
+  "bugs": {
+    "url": "https://github.com/gsd-build/agent-inbox/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
