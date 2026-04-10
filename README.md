@@ -2,11 +2,19 @@
 
 Give any AI agent a disposable email inbox in one tool call.
 
-```
-npx gsd-agent-inbox
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gsd-build/agent-inbox/main/install.sh | bash
 ```
 
+The installer auto-detects your AI coding agents (Claude Code, Cursor, Windsurf) and configures the MCP server + optional skill for each.
+
+## What it does
+
 An [MCP server](https://modelcontextprotocol.io) that creates real, temporary email addresses on demand. Your agent can sign up for services, receive confirmation emails, extract verification links, and clean up — without you lifting a finger.
+
+No API keys. No accounts. No configuration. Works with any email-sending service — Supabase, Resend, SendGrid, Postmark, AWS SES, whatever.
 
 ## The problem
 
@@ -32,19 +40,17 @@ Agent: delete_inbox({ address: "signup-1712345678@somedomain.com" })
 → Done.
 ```
 
-No API keys. No accounts. No configuration. Works with any email-sending service — Supabase, Resend, SendGrid, Postmark, AWS SES, whatever.
+## Manual setup
 
-## Setup
+If you prefer to configure manually instead of using the installer:
 
 ### Claude Code
-
-One command:
 
 ```bash
 claude mcp add agent-inbox -- npx -y gsd-agent-inbox
 ```
 
-Or add manually to `~/.claude/settings.json`:
+Or add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -89,7 +95,7 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
 
 ### Any other MCP client
 
-Any client that supports stdio transport — use the same config shape:
+Any client that supports stdio transport:
 
 ```json
 {
@@ -117,13 +123,16 @@ npm start
 | `list_inboxes` | Show all active inboxes in the current session. |
 | `delete_inbox` | Destroy an inbox and its backing account. |
 
-## Claude Code skill (optional)
+## Skill
 
-The repo includes a skill file that teaches Claude *when* and *how* to use agent-inbox automatically — so it reaches for the inbox tools whenever it encounters auth flows, email verification, or sign-up testing.
+The installer can optionally add a skill file that teaches your AI agent *when* and *how* to use agent-inbox — so it reaches for the inbox tools automatically when it encounters auth flows, email verification, or sign-up testing.
+
+To install the skill manually:
 
 ```bash
 mkdir -p ~/.claude/skills/agent-inbox
-cp skill/SKILL.md ~/.claude/skills/agent-inbox/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/gsd-build/agent-inbox/main/skill/SKILL.md \
+  -o ~/.claude/skills/agent-inbox/SKILL.md
 ```
 
 ## How it works
