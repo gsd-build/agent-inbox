@@ -1,6 +1,6 @@
 {
   "name": "gsd-agent-inbox",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "Give any AI agent a disposable email inbox in one tool call. MCP server for email verification, auth flows, and testing.",
   "main": "build/index.js",
@@ -9,6 +9,7 @@
   },
   "files": [
     "build",
+    "bin",
     "skill"
   ],
   "scripts": {

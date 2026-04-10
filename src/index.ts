@@ -3,7 +3,12 @@
 // If stdin is a TTY, user ran this from a terminal → launch interactive installer.
 // If stdin is NOT a TTY, an MCP client piped us → start the MCP server.
 if (process.stdin.isTTY) {
-  await import("./installer.js");
+  const { execFileSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const installer = join(__dirname, "..", "bin", "install.cjs");
+  execFileSync(process.execPath, [installer], { stdio: "inherit" });
   process.exit(0);
 }
 
