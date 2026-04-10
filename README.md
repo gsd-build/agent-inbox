@@ -38,7 +38,13 @@ No API keys. No accounts. No configuration. Works with any email-sending service
 
 ### Claude Code
 
-Add to `~/.claude/settings.json`:
+One command:
+
+```bash
+claude mcp add agent-inbox -- npx -y gsd-agent-inbox
+```
+
+Or add manually to `~/.claude/settings.json`:
 
 ```json
 {
@@ -51,9 +57,39 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-### Cursor / Windsurf / any MCP client
+### Cursor
 
-Same pattern — any client that supports stdio transport:
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "agent-inbox": {
+      "command": "npx",
+      "args": ["-y", "gsd-agent-inbox"]
+    }
+  }
+}
+```
+
+### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "agent-inbox": {
+      "command": "npx",
+      "args": ["-y", "gsd-agent-inbox"]
+    }
+  }
+}
+```
+
+### Any other MCP client
+
+Any client that supports stdio transport — use the same config shape:
 
 ```json
 {
