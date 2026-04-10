@@ -62,9 +62,35 @@ Or add to `~/.claude/settings.json`:
 }
 ```
 
+### Codex CLI
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.agent-inbox]
+command = "npx"
+args = ["-y", "gsd-agent-inbox"]
+env = { }
+```
+
 ### Cursor
 
 Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "agent-inbox": {
+      "command": "npx",
+      "args": ["-y", "gsd-agent-inbox"]
+    }
+  }
+}
+```
+
+### Gemini CLI
+
+Add to `~/.gemini/settings.json`:
 
 ```json
 {
